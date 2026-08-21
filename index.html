@@ -513,6 +513,7 @@ function loadFile(file){
       undoBtn.disabled=true;resetBtn.disabled=true;undoStack=[];
       switchView('view');
       generate();
+      setTimeout(()=>beadWrap.scrollIntoView({behavior:'smooth',block:'center'}),50);
     };
     img.src=e.target.result;
   };
