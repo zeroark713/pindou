@@ -1,0 +1,14 @@
+# Render 静态站点部署配置
+# https://dashboard.render.com/blueprints
+services:
+  - type: static_site
+    name: pindou
+    staticPublishPath: .
+    buildCommand: ""
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: public, max-age=300
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
