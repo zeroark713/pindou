@@ -426,7 +426,7 @@ uploadZone.addEventListener('dragleave',()=>uploadZone.classList.remove('dragove
 uploadZone.addEventListener('drop',e=>{e.preventDefault();uploadZone.classList.remove('dragover');if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0]);});
 fileInput.addEventListener('change',e=>{if(e.target.files[0])loadFile(e.target.files[0]);});
 
-paletteSelect.addEventListener('change',()=>{currentPalette=PALETTES[paletteSelect.value];renderPaintPalette();});
+paletteSelect.addEventListener('change',()=>{currentPalette=PALETTES[paletteSelect.value];renderPaintPalette();if(currentImage)generate();});
 modeTabs.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   modeTabs.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
   t.classList.add('active');displayMode=t.dataset.mode;renderBead();renderChart();
