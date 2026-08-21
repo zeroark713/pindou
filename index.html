@@ -603,11 +603,51 @@ generateBtn.addEventListener('click',generate);
 exportBtn.addEventListener('click',()=>{
   const c=buildExportImage();
   if(!c)return;
-  const a=document.createElement('a');
-  a.download=`bead-chart-${currentGrid[0].length}x${currentGrid.length}.png`;
-  a.href=c.toDataURL('image/png');
-  a.click();
+  const W=currentGrid[0].length, H=currentGrid.length;
+  const filename=`bead-chart-${W}x${H}.png`;
+  const isMobile=/Android|webOS|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  // 用 toBlob 而非 dataURL:文件更小,移动端更稳定
+  c.toBlob(async blob=>{
+    if(!blob){fallbackDownload(c,filename);return;}
+
+    // 移动端:优先用 Web Share API(iOS 显示"存储图像"→ 相册;Android 也可用)
+    if(isMobile && navigator.canShare){
+      try{
+        const file=new File([blob],filename,{type:'image/png'});
+        if(navigator.canShare({files:[file]})){
+          await navigator.share({files:[file],title:'拼豆图纸'});
+          showToast('💡 iOS 选"存储图像"可保存到相册');
+          return;
+        }
+      }catch(err){
+        if(err.name==='AbortError')return; // 用户取消
+      }
+    }
+
+    // 桌面端 / 移动端 fallback:普通下载
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=filename;
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+  },'image/png');
 });
+
+function fallbackDownload(canvas,filename){
+  const a=document.createElement('a');
+  a.download=filename;a.href=canvas.toDataURL('image/png');a.click();
+}
+
+// 轻量级提示条
+function showToast(msg){
+  const t=document.createElement('div');
+  t.textContent=msg;
+  t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(51,51,51,.92);color:#fff;padding:10px 18px;border-radius:8px;z-index:99999;font-size:.88em;box-shadow:0 4px 16px rgba(0,0,0,.2);max-width:90vw;text-align:center;pointer-events:none;transition:opacity .3s';
+  document.body.appendChild(t);
+  requestAnimationFrame(()=>t.style.opacity='1');
+  setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},3500);
+}
 
 // 生成"可打印"的导出图:上方图纸(坐标+完整色号)+下方统计
 // 2x 高分辨率渲染,文字清晰锐利
@@ -618,7 +658,7 @@ function buildExportImage(){
   const pal=currentPalette.colors;
 
   // === 高清渲染:整体放大 SCALE 倍 ===
-  const SCALE=2;
+  // SCALE 在算出 totalW/totalH 后自适应(移动端避免canvas超限)
   const maxCodeLen=Math.max(...pal.map(c=>c.code.length)); // 通常3, Hama为4
 
   // === 色号统计 ===
@@ -662,10 +702,22 @@ function buildExportImage(){
   const totalW = chartW; // 图纸多宽,统计区就多宽(完全撑满)
   const totalH = headerH + chartH + sepH + statsH + 12;
 
+  // === 自适应 SCALE:移动端避免 canvas 超出内存限制 ===
+  const isMobileExport = /Android|webOS|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  // 移动端浏览器 canvas 安全上限约 4096×4096 = 16MP,留余量用 3500
+  const MAX_DIM = isMobileExport ? 3500 : 9999;
+  let SCALE = 2;
+  if(totalW*2 > MAX_DIM || totalH*2 > MAX_DIM){
+    SCALE = Math.min(MAX_DIM/totalW, MAX_DIM/totalH, 2);
+    SCALE = Math.max(1, Math.floor(SCALE*10)/10); // 保留一位小数,最低1x
+  }
+  // 极小图(<400)不需要 2x,反而文件更大
+  if(totalW < 400) SCALE = 2;
+
   // === 画布(实际像素 = 逻辑像素 × SCALE) ===
   const canvas = document.createElement('canvas');
-  canvas.width = totalW * SCALE;
-  canvas.height = totalH * SCALE;
+  canvas.width = Math.round(totalW * SCALE);
+  canvas.height = Math.round(totalH * SCALE);
   const ctx = canvas.getContext('2d');
   ctx.scale(SCALE, SCALE);
   // 高质量文本渲染(现代浏览器)
