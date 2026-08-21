@@ -541,9 +541,12 @@ boardPreset.addEventListener('change',()=>{
   if(!boardPreset.value)return;
   const[w,h]=boardPreset.value.split(',');
   gridWE.value=+w;gridHE.value=+h;lockRatio.value='custom';
-  if(currentImage)generate();
+  if(currentImage){shouldAutoScroll=true;generate();}
 });
-lockRatio.addEventListener('change',()=>{if(lockRatio.value==='image'&&currentImage)syncHeightFromImage();});
+lockRatio.addEventListener('change',()=>{
+  if(lockRatio.value==='image'&&currentImage)syncHeightFromImage();
+  if(currentImage){shouldAutoScroll=false;generate();}
+});
 
 generateBtn.addEventListener('click',generate);
 exportBtn.addEventListener('click',()=>{const c=chartWrap.querySelector('canvas');if(!c)return;const a=document.createElement('a');a.download='bead-chart.png';a.href=c.toDataURL('image/png');a.click();});
