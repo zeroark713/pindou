@@ -458,6 +458,7 @@ let hiddenCodes = new Set();
 let viewMode = 'view';          // view / orig / chart
 let grid5 = 5;
 let mirrored = false;
+let shouldAutoScroll = false;
 let removeWhite = false;
 let paintMode = false;
 let paintColorIdx = -1;         // 修豆块选中的颜色索引
@@ -489,7 +490,7 @@ paletteSelect.addEventListener('change',()=>{
   currentPalette=PALETTES[paletteSelect.value];
   updatePaletteInfo();
   renderPaintPalette();
-  if(currentImage)generate();
+  if(currentImage){shouldAutoScroll=true;generate();}
 });
 
 function updatePaletteInfo(){
@@ -549,7 +550,9 @@ textBeadBtn.addEventListener('click',()=>{
   exportBtn.disabled=false;
   exportListBtn.disabled=false;
   paintHint.textContent='修豆模式：点击格子涂改';
+  shouldAutoScroll=true;
   renderBead();renderChart();renderStats();renderPaintPalette();
+  if(shouldAutoScroll){beadWrap.scrollIntoView({behavior:'smooth',block:'center'});shouldAutoScroll=false;}
 });
 
 undoBtn.addEventListener('click',()=>{
@@ -584,8 +587,8 @@ function loadFile(file){
       generateBtn.textContent='🔄 重新生成';
       undoBtn.disabled=true;resetBtn.disabled=true;undoStack=[];
       switchView('view');
+      shouldAutoScroll=true;
       generate();
-      setTimeout(()=>beadWrap.scrollIntoView({behavior:'smooth',block:'center'}),50);
     };
     img.src=e.target.result;
   };
@@ -689,6 +692,7 @@ function generate(){
   renderBead();renderChart();renderStats();renderPaintPalette();
   exportBtn.disabled=false;exportListBtn.disabled=false;
   paintHint.textContent='修豆模式：点击格子涂改';
+  if(shouldAutoScroll){beadWrap.scrollIntoView({behavior:'smooth',block:'center'});shouldAutoScroll=false;}
 }
 
 function renderBead(){
