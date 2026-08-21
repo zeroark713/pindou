@@ -124,6 +124,11 @@ header p{font-size:.72em}
 </style>
 </head>
 <body>
+<div class="gen-overlay" id="genOverlay">
+  <div class="gen-spinner"></div>
+  <div class="gen-text">生成中...</div>
+  <div class="gen-progress" id="genProgress">处理图片中</div>
+</div>
 
 <div class="container">
   <header>
@@ -915,10 +920,5 @@ function exportList(){
   const a=document.createElement('a');a.download='bead-colors.txt';a.href=URL.createObjectURL(blob);a.click();
 }
 </script>
-<div class="gen-overlay" id="genOverlay">
-  <div class="gen-spinner"></div>
-  <div class="gen-text">生成中...</div>
-  <div class="gen-progress" id="genProgress">处理图片中</div>
-</div>
 </body>
 </html>
