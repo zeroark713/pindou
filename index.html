@@ -522,9 +522,15 @@ document.querySelectorAll('#grid5Tabs .tab').forEach(t=>t.addEventListener('clic
   t.classList.add('active');grid5=parseInt(t.dataset.grid5);renderChart();
 }));
 
-[gridWE,gridHE,bgMode,showGrid,dither,showCoord,colorCount].forEach(el=>el.addEventListener('change',()=>{
+[gridWE,gridHE,showGrid,dither,showCoord].forEach(el=>el.addEventListener('change',()=>{
   if(lockRatio.value==='image'&&currentImage)syncHeightFromImage();
 }));
+colorCount.addEventListener('change',()=>{
+  if(currentImage){shouldAutoScroll=false;generate();}
+});
+bgMode.addEventListener('change',()=>{
+  if(currentGrid){renderBead();renderChart();}
+});
 boardPreset.addEventListener('change',()=>{
   if(!boardPreset.value)return;
   const[w,h]=boardPreset.value.split(',');
