@@ -177,6 +177,7 @@ header p{font-size:.72em}
             <option value="hama">Hama</option>
             <option value="artkal">Artkal 阿卡</option>
           </select>
+          <div id="paletteInfo" style="font-size:.72em;color:#888;margin-top:5px;line-height:1.4"></div>
         </div>
       </div>
 
@@ -286,7 +287,7 @@ header p{font-size:.72em}
 
 <script>
 const PALETTES = {
-  mard: { name:'MARD 漫漫', colors:[
+  mard: { name:'MARD 漫漫', desc:'42色 · 标准色+荧光+金属+肤色', colors:[
     {code:'H01',name:'哑白',rgb:[248,248,243]},{code:'H02',name:'亮白',rgb:[255,255,255]},
     {code:'H03',name:'米白',rgb:[240,232,212]},{code:'H04',name:'浅灰',rgb:[210,210,210]},
     {code:'H05',name:'银灰',rgb:[160,160,160]},{code:'H06',name:'深灰',rgb:[105,105,105]},
@@ -308,6 +309,64 @@ const PALETTES = {
     {code:'H37',name:'深紫',rgb:[95,55,135]},{code:'H38',name:'紫红',rgb:[170,70,130]},
     {code:'H39',name:'浅咖',rgb:[205,165,125]},{code:'H40',name:'棕色',rgb:[150,100,60]},
     {code:'H41',name:'深咖',rgb:[100,60,30]},{code:'H42',name:'驼色',rgb:[185,140,105]}
+  ]},
+  milu: { name:'咪露拼豆', desc:'30色 · 柔和复古色调（莫兰迪系）', colors:[
+    {code:'M01',name:'白色',rgb:[255,255,255]},{code:'M02',name:'乳白',rgb:[250,243,228]},
+    {code:'M03',name:'灰白',rgb:[230,228,222]},{code:'M04',name:'暖灰',rgb:[198,196,190]},
+    {code:'M05',name:'烟灰',rgb:[148,146,142]},{code:'M06',name:'深灰',rgb:[85,84,82]},
+    {code:'M07',name:'黑色',rgb:[28,28,28]},{code:'M08',name:'藕粉',rgb:[235,210,212]},
+    {code:'M09',name:'樱花粉',rgb:[225,168,178]},{code:'M10',name:'玫粉',rgb:[208,98,128]},
+    {code:'M11',name:'豆沙',rgb:[185,82,75]},{code:'M12',name:'枣红',rgb:[155,60,60]},
+    {code:'M13',name:'砖红',rgb:[178,75,55]},{code:'M14',name:'蜜橙',rgb:[245,170,100]},
+    {code:'M15',name:'橙',rgb:[243,135,60]},{code:'M16',name:'土黄',rgb:[218,178,92]},
+    {code:'M17',name:'奶油黄',rgb:[248,228,155]},{code:'M18',name:'浅黄',rgb:[248,235,125]},
+    {code:'M19',name:'芥末黄',rgb:[215,190,80]},{code:'M20',name:'抹茶',rgb:[155,180,105]},
+    {code:'M21',name:'橄榄',rgb:[115,140,75]},{code:'M22',name:'墨绿',rgb:[60,100,72]},
+    {code:'M23',name:'雾绿',rgb:[145,180,162]},{code:'M24',name:'雾蓝',rgb:[155,192,212]},
+    {code:'M25',name:'灰蓝',rgb:[118,150,182]},{code:'M26',name:'蓝',rgb:[78,120,170]},
+    {code:'M27',name:'深蓝',rgb:[55,82,132]},{code:'M28',name:'藕紫',rgb:[185,168,182]},
+    {code:'M29',name:'紫灰',rgb:[140,125,148]},{code:'M30',name:'浅咖',rgb:[205,170,128]}
+  ]},
+  perler: { name:'Perler 拼拼豆', desc:'28色 · 鲜艳糖果色系（高饱和）', colors:[
+    {code:'P01',name:'White',rgb:[252,252,250]},{code:'P02',name:'Cream',rgb:[245,235,210]},
+    {code:'P03',name:'Light Gray',rgb:[208,208,208]},{code:'P04',name:'Gray',rgb:[140,140,140]},
+    {code:'P05',name:'Dark Gray',rgb:[85,85,85]},{code:'P06',name:'Black',rgb:[22,22,22]},
+    {code:'P07',name:'Bubblegum',rgb:[255,165,205]},{code:'P08',name:'Hot Pink',rgb:[245,85,148]},
+    {code:'P09',name:'Magenta',rgb:[225,75,165]},{code:'P10',name:'Red',rgb:[225,40,40]},
+    {code:'P11',name:'Cherry',rgb:[210,30,55]},{code:'P12',name:'Coral',rgb:[255,115,85]},
+    {code:'P13',name:'Orange',rgb:[255,145,45]},{code:'P14',name:'Yellow',rgb:[255,225,50]},
+    {code:'P15',name:'Lime',rgb:[185,230,85]},{code:'P16',name:'Green',rgb:[85,200,105]},
+    {code:'P17',name:'Dark Green',rgb:[50,130,72]},{code:'P18',name:'Mint',rgb:[145,222,172]},
+    {code:'P19',name:'Cyan',rgb:[85,205,222]},{code:'P20',name:'Light Blue',rgb:[145,205,238]},
+    {code:'P21',name:'Blue',rgb:[65,132,212]},{code:'P22',name:'Navy',rgb:[42,72,142]},
+    {code:'P23',name:'Purple',rgb:[145,82,182]},{code:'P24',name:'Lavender',rgb:[202,182,232]},
+    {code:'P25',name:'Peach',rgb:[255,192,152]},{code:'P26',name:'Tan',rgb:[222,182,132]},
+    {code:'P27',name:'Brown',rgb:[158,102,62]},{code:'P28',name:'Coffee',rgb:[105,62,38]}
+  ]},
+  hama: { name:'Hama', desc:'20色 · 经典基础色（无荧光/金属）', colors:[
+    {code:'HM01',name:'White',rgb:[252,252,250]},{code:'HM02',name:'Cream',rgb:[245,235,210]},
+    {code:'HM03',name:'Light Gray',rgb:[208,208,208]},{code:'HM04',name:'Gray',rgb:[140,140,140]},
+    {code:'HM05',name:'Dark Gray',rgb:[68,68,68]},{code:'HM06',name:'Black',rgb:[22,22,22]},
+    {code:'HM07',name:'Yellow',rgb:[250,222,55]},{code:'HM08',name:'Orange',rgb:[250,140,50]},
+    {code:'HM09',name:'Red',rgb:[222,42,42]},{code:'HM10',name:'Pink',rgb:[245,178,200]},
+    {code:'HM11',name:'Magenta',rgb:[210,80,140]},{code:'HM12',name:'Purple',rgb:[140,88,180]},
+    {code:'HM13',name:'Light Blue',rgb:[155,205,232]},{code:'HM14',name:'Blue',rgb:[68,128,200]},
+    {code:'HM15',name:'Cyan',rgb:[78,190,212]},{code:'HM16',name:'Light Green',rgb:[160,212,140]},
+    {code:'HM17',name:'Green',rgb:[78,182,102]},{code:'HM18',name:'Dark Green',rgb:[48,108,68]},
+    {code:'HM19',name:'Tan',rgb:[202,170,120]},{code:'HM20',name:'Brown',rgb:[145,90,55]}
+  ]},
+  artkal: { name:'Artkal 阿卡', desc:'22色 · 艺术中性色（含橄榄/焦糖）', colors:[
+    {code:'A01',name:'White',rgb:[252,252,250]},{code:'A02',name:'Cream',rgb:[248,238,215]},
+    {code:'A03',name:'Light Gray',rgb:[208,208,208]},{code:'A04',name:'Gray',rgb:[140,140,140]},
+    {code:'A05',name:'Dark Gray',rgb:[78,78,78]},{code:'A06',name:'Black',rgb:[22,22,22]},
+    {code:'A07',name:'Cream Yellow',rgb:[245,225,170]},{code:'A08',name:'Yellow',rgb:[245,212,55]},
+    {code:'A09',name:'Amber',rgb:[230,160,55]},{code:'A10',name:'Orange',rgb:[245,140,55]},
+    {code:'A11',name:'Light Pink',rgb:[248,210,215]},{code:'A12',name:'Pink',rgb:[240,160,180]},
+    {code:'A13',name:'Rose',rgb:[220,110,130]},{code:'A14',name:'Red',rgb:[212,50,55]},
+    {code:'A15',name:'Light Blue',rgb:[160,205,225]},{code:'A16',name:'Blue',rgb:[68,135,200]},
+    {code:'A17',name:'Dark Blue',rgb:[48,80,140]},{code:'A18',name:'Mint',rgb:[150,210,190]},
+    {code:'A19',name:'Green',rgb:[88,170,102]},{code:'A20',name:'Olive',rgb:[108,118,62]},
+    {code:'A21',name:'Tan',rgb:[202,170,120]},{code:'A22',name:'Caramel',rgb:[158,105,62]}
   ]}
 };
 
@@ -426,7 +485,20 @@ uploadZone.addEventListener('dragleave',()=>uploadZone.classList.remove('dragove
 uploadZone.addEventListener('drop',e=>{e.preventDefault();uploadZone.classList.remove('dragover');if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0]);});
 fileInput.addEventListener('change',e=>{if(e.target.files[0])loadFile(e.target.files[0]);});
 
-paletteSelect.addEventListener('change',()=>{currentPalette=PALETTES[paletteSelect.value];renderPaintPalette();if(currentImage)generate();});
+paletteSelect.addEventListener('change',()=>{
+  currentPalette=PALETTES[paletteSelect.value];
+  updatePaletteInfo();
+  renderPaintPalette();
+  if(currentImage)generate();
+});
+
+function updatePaletteInfo(){
+  const el=$('paletteInfo');
+  if(!el)return;
+  const p=currentPalette;
+  el.innerHTML=`<b>${p.name}</b> · ${p.colors.length}色<br>${p.desc||''}`;
+}
+updatePaletteInfo();
 modeTabs.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   modeTabs.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
   t.classList.add('active');displayMode=t.dataset.mode;renderBead();renderChart();
