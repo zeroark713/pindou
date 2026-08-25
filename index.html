@@ -610,6 +610,7 @@ header p{font-size:.72em}
     </div>
     <div class="inv-modal-foot">
       <button class="inv-btn ghost" id="recSkipBtn">仅保存图片（不扣减）</button>
+      <button class="inv-btn ghost" id="recCropBtn">✂️ 裁剪后再识别</button>
       <button class="inv-btn danger" id="recResetBtn">重新识别</button>
       <button class="inv-btn" id="recConfirmBtn">✅ 确认扣减库存</button>
     </div>
@@ -1809,12 +1810,16 @@ cropBtn.addEventListener('click',()=>{
   openCropper();
 });
 
-function openCropper(){
-  cropState.image=currentImage;
-  // 只有在当前图 ≠ 原图时,还原按钮才有用
-  cropRestoreBtn.disabled=!(originalImage && currentImage && currentImage!==originalImage);
+// v1.3.2: 让裁剪弹窗可被外部模块（如库存管家）复用
+let _cropUserCallback = null;
+
+function openCropper(image, callback){
+  cropState.image = image || currentImage;
+  // 只有在当前图 ≠ 原图时,还原按钮才有用（生成器场景）
+  cropRestoreBtn.disabled=!(originalImage && cropState.image && cropState.image===originalImage && !callback);
   cropOverlay.classList.add('show');
   document.body.style.overflow='hidden';
+  _cropUserCallback = callback || null;
   requestAnimationFrame(()=>{
     setupCropCanvas();
     resetCropSelection();
@@ -1824,6 +1829,7 @@ function openCropper(){
 function closeCropper(){
   cropOverlay.classList.remove('show');
   document.body.style.overflow='';
+  _cropUserCallback = null;  // v1.3.2: 关闭时清掉回调，避免悬挂
 }
 
 function setupCropCanvas(){
@@ -2033,12 +2039,21 @@ cropConfirmBtn.addEventListener('click',()=>{
   ctx.drawImage(img, ix, iy, iw, ih, 0, 0, iw, ih);
   const newImg=new Image();
   newImg.onload=()=>{
-    currentImage=newImg;
-    drawOriginal(newImg);
-    if(lockRatio.value==='image')syncHeightFromImage();
-    shouldAutoScroll=false;
-    generate();
-    closeCropper();
+    if(_cropUserCallback){
+      // v1.3.2: 外部模块（如库存管家）调用：交给回调处理
+      const cb=_cropUserCallback;
+      _cropUserCallback=null;
+      cb(newImg);
+      closeCropper();
+    }else{
+      // 生成器自己的流程
+      currentImage=newImg;
+      drawOriginal(newImg);
+      if(lockRatio.value==='image')syncHeightFromImage();
+      shouldAutoScroll=false;
+      generate();
+      closeCropper();
+    }
   };
   newImg.onerror=()=>{alert('裁剪失败');closeCropper();};
   newImg.src=tmp.toDataURL('image/png');
@@ -2352,6 +2367,7 @@ function bindInvEvents(){
   $i("recConfirmBtn").addEventListener('click',()=>confirmRec());
   $i("recResetBtn").addEventListener('click',()=>{doRecognize(pendingFile);});
   $i("recSkipBtn").addEventListener('click',()=>{finishPic(false);});
+  $i("recCropBtn").addEventListener('click',()=>cropPendingFile());
   $i("recManualAdd").addEventListener('click',()=>{const code=$i("recManualCode").value;const q=parseInt($i("recManualQty").value);if(!code||!q){invToast("请选择货号并填写数量");return;}
     recResult[code]=(recResult[code]||0)+q;renderRecTable();$i("recManualQty").value="";});
 
@@ -2605,6 +2621,34 @@ function analyzeColors(img){
   return out;
 }
 function colorDist(a,b){return Math.sqrt((a[0]-b[0])**2+(a[1]-b[1])**2+(a[2]-b[2])**2);}
+
+// ===== v1.3.2: 复用生成器的裁剪弹窗 =====
+function imgToDataUrl(img){
+  const c=document.createElement("canvas");
+  c.width=img.naturalWidth||img.width;
+  c.height=img.naturalHeight||img.height;
+  c.getContext("2d").drawImage(img,0,0);
+  return c.toDataURL("image/jpeg",0.9);
+}
+function cropPendingFile(){
+  if(!pendingFile){invToast("没有可裁剪的图片");return;}
+  const img=new Image();
+  img.onload=()=>{
+    // 关闭识别弹窗（裁剪时会显示遮罩，避免重叠）
+    $i("modalRec").classList.remove("show");
+    // 调用生成器的裁剪弹窗，传入自定义回调
+    openCropper(img, (croppedImg)=>{
+      const newData=imgToDataUrl(croppedImg);
+      pendingFile.data=newData;
+      pendingFile.thumb=newData;
+      // 重新打开识别弹窗，更新预览和重新识别
+      $i("modalRec").classList.add("show");
+      doRecognize(pendingFile);
+      invToast("裁剪完成，已重新识别");
+    });
+  };
+  img.src=pendingFile.data;
+}
 function renderRecTable(loading){
   const tb=$i("recTable tbody"),nf=$i("recNotFound");
   const manualSel=$i("recManualCode");manualSel.innerHTML='<option value="">选择货号…</option>';
