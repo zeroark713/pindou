@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>🎨 拼豆像素图生成器 v1.4 · 库存管家</title>
+<title>🎨 拼豆像素图生成器 v1.5 · 库存管家</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:linear-gradient(135deg,#fff5f5 0%,#ffe8e8 100%);color:#2a2a2a;min-height:100vh;padding:16px}
@@ -333,6 +333,18 @@ header p{font-size:.72em}
             <option value="artkal">Artkal 阿卡</option>
           </select>
           <div id="paletteInfo" style="font-size:.72em;color:#888;margin-top:5px;line-height:1.4"></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="panel-title">⚙️ 算法</div>
+        <div class="control-group">
+          <label>最多用色 <span id="maxColorsLabel" style="color:#888;font-weight:normal">40</span> 色</label>
+          <input type="range" id="maxColors" min="10" max="144" value="40" style="width:100%">
+          <div style="font-size:.7em;color:#999;margin-top:2px">越少越干净，越多越还原</div>
+        </div>
+        <div class="toolbar" style="margin-top:6px">
+          <label><input type="checkbox" id="whiteClamp" checked> 白色强制分档</label>
         </div>
       </div>
 
@@ -943,6 +955,10 @@ const colorCount=$('colorCount');
 const generateBtn=$('generateBtn'),exportBtn=$('exportBtn'),exportListBtn=$('exportListBtn');
 const mirrorBtn=$('mirrorBtn'),removeWhiteBtn=$('removeWhiteBtn'),textBeadBtn=$('textBeadBtn');
 const paintModeChk=$('paintMode'),paintPalette=$('paintPalette'),paintHint=$('paintHint');
+const maxColorsRange=$('maxColors'),maxColorsLabel=$('maxColorsLabel'),whiteClampChk=$('whiteClamp');
+maxColorsRange.addEventListener('input',()=>{maxColorsLabel.textContent=maxColorsRange.value;});
+maxColorsRange.addEventListener('change',()=>{if(currentImage){shouldAutoScroll=true;generate();}});
+whiteClampChk.addEventListener('change',()=>{if(currentImage){shouldAutoScroll=true;generate();}});
 const undoBtn=$('undoBtn'),resetBtn=$('resetBtn');
 const originalWrap=$('originalWrap'),beadWrap=$('beadWrap'),chartWrap=$('chartWrap');
 const statsGrid=$('statsGrid'),modeTabs=$('modeTabs');
@@ -1570,21 +1586,92 @@ function generateAsync(W,H,myId){
   if(myId!==_genId){hideGen();return;}
   genProgress.textContent='匹配拼豆色中...';
 
+  // ===== B: 白色段强制分档 =====
+  // 衬衫、纸张这类"近白"像素,色卡里白色过渡太少,容易被拆成脏马赛克
+  // 策略: 识别"接近白"的像素(L*≥88 且 C*≤12),只允许在白色段候选里选
+  // 白色段: 色卡里 L*≥85 且 C*≤15 的颜色,按 L* 排序,最多取 4 档(避免马赛克)
+  let whiteCands=null;
+  if(whiteClampChk.checked){
+    const allWhites=pal.map((c,i)=>({i,L:c.lab[0],C:Math.hypot(c.lab[1],c.lab[2])}))
+      .filter(c=>c.L>=85 && c.C<=15)
+      .sort((a,b)=>b.L-a.L); // 按亮度从高到低
+    // 均匀取 4 档
+    if(allWhites.length>4){
+      const step=(allWhites.length-1)/3;
+      whiteCands=[allWhites[0].i, allWhites[Math.round(step)].i,
+                  allWhites[Math.round(step*2)].i, allWhites[allWhites.length-1].i];
+    }else{
+      whiteCands=allWhites.map(c=>c.i);
+    }
+  }
+
   // CIEDE2000 感知匹配（palette 的 Lab 已在启动时预计算）
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
     const i=(y*W+x)*4;const r=data[i],g=data[i+1],b=data[i+2],a=data[i+3];
     if(a<128){currentGrid[y][x]=-1;continue;}
     const lab=rgbToLab(r,g,b);
+    const L=lab[0],C=Math.hypot(lab[1],lab[2]);
+    // 白色像素走白色段,其他走全色卡
+    const candIdx=(whiteCands && L>=88 && C<=12)?whiteCands:null;
     let best=0,bestD=Infinity;
-    for(let p=0;p<pal.length;p++){
-      const d=deltaE2000(lab,pal[p].lab);
-      if(d<bestD){bestD=d;best=p;}
+    if(candIdx){
+      for(const p of candIdx){
+        const d=deltaE2000(lab,pal[p].lab);
+        if(d<bestD){bestD=d;best=p;}
+      }
+    }else{
+      for(let p=0;p<pal.length;p++){
+        const d=deltaE2000(lab,pal[p].lab);
+        if(d<bestD){bestD=d;best=p;}
+      }
     }
     currentGrid[y][x]=best;
   }
   if(myId!==_genId){hideGen();return;}
+
+  // ===== A: 限制最多用色数 =====
+  // 把用量最少的色号合并到 CIEDE2000 最近的"存活色号",直到 ≤ maxColors
+  const maxC=+maxColorsRange.value;
+  const usage=new Map();
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const v=currentGrid[y][x];
+    if(v>=0)usage.set(v,(usage.get(v)||0)+1);
+  }
+  if(usage.size>maxC){
+    genProgress.textContent=`合并颜色 ${usage.size}→${maxC}...`;
+    // 按用量升序,逐个合并
+    const sorted=[...usage.entries()].sort((a,b)=>a[1]-b[1]);
+    const alive=new Set(usage.keys());
+    const mergeMap=new Map(); // 被合并色号 → 目标色号
+    for(const [idx] of sorted){
+      if(alive.size<=maxC)break;
+      if(!alive.has(idx))continue;
+      // 找最近的存活色号
+      const labI=pal[idx].lab;
+      let best=-1,bestD=Infinity;
+      for(const j of alive){
+        if(j===idx)continue;
+        const d=deltaE2000(labI,pal[j].lab);
+        if(d<bestD){bestD=d;best=j;}
+      }
+      if(best>=0){
+        mergeMap.set(idx,best);
+        alive.delete(idx);
+      }
+    }
+    // 应用合并
+    if(mergeMap.size>0){
+      for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+        const v=currentGrid[y][x];
+        if(mergeMap.has(v))currentGrid[y][x]=mergeMap.get(v);
+      }
+    }
+  }
+  if(myId!==_genId){hideGen();return;}
+
   genProgress.textContent='清理噪点中...';
-  currentGrid=modeSmooth(currentGrid,6);
+  // ===== C: 平滑阈值 6→8 =====
+  currentGrid=modeSmooth(currentGrid,8);
   if(myId!==_genId){hideGen();return;}
   baseGrid=currentGrid.map(row=>row.slice());
   undoStack=[];
