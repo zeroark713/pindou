@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>🎨 拼豆像素图生成器 v1.3.5 · 库存管家</title>
+<title>🎨 拼豆像素图生成器 v1.3.6 · 库存管家</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:linear-gradient(135deg,#fff5f5 0%,#ffe8e8 100%);color:#2a2a2a;min-height:100vh;padding:16px}
@@ -1556,22 +1556,34 @@ function generate(){
 }
 
 function generateAsync(W,H,myId){
-  // v1.3.5: 极简像素化
-  // 第1步: 用 Lanczos 把图缩到目标尺寸(高保真缩放,边缘锐)
-  // 第2步: 每个像素用 RGB 欧氏距离找最近色号,直接出图
-  // 没有抖动、没有 K-means、没有误差扩散
+  // v1.3.6: 极简像素化 + 抗噪预处理
+  // 第1步: Lanczos 把图缩到目标尺寸
+  // 第2步: 3×3 模糊抹掉 JPEG 压缩噪点和 Lanczos 边缘振铃
+  //        (不模糊的话,一点微小色偏就会被错误匹配到邻近的纯色号)
+  // 第3步: 每个像素用 RGB 欧氏距离找最近色号
   genProgress.textContent='缩放中...';
   const small=lanczosResize(currentImage,W,H);
   const imgData=small.getContext('2d').getImageData(0,0,W,H);
-  const data=imgData.data;
+  const rawData=imgData.data;
+  // 3×3 盒式模糊(每个像素与 8 邻居取平均)
+  const data=new Uint8ClampedArray(rawData.length);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    let r=0,g=0,bb=0,a=0,n=0;
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+      const ny=y+dy,nx=x+dx;
+      if(ny<0||ny>=H||nx<0||nx>=W)continue;
+      const ni=(ny*W+nx)*4;
+      r+=rawData[ni];g+=rawData[ni+1];bb+=rawData[ni+2];a+=rawData[ni+3];n++;
+    }
+    const di=(y*W+x)*4;
+    data[di]=r/n;data[di+1]=g/n;data[di+2]=bb/n;data[di+3]=a/n;
+  }
   currentGrid=Array.from({length:H},()=>new Array(W).fill(0));
   const pal=currentPalette.colors;
   if(myId!==_genId){hideGen();return;}
   genProgress.textContent='匹配拼豆色中...';
 
-  // v1.3.5: 极简像素化 - 完全去掉抖动/K-means/误差扩散
-  // 只做一件事:缩小到目标尺寸 → 每个像素直接用 RGB 欧氏距离找最近色号
-  // (用 RGB 直方距离代替 CIEDE2000,直接快速,所见即所得)
+  // 极简像素化 - 每个像素用 RGB 欧氏距离找最近色号
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
     const i=(y*W+x)*4;const r=data[i],g=data[i+1],b=data[i+2],a=data[i+3];
     if(a<128){currentGrid[y][x]=-1;continue;}
