@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>🎨 拼豆像素图生成器 v1.3.4 · 库存管家</title>
+<title>🎨 拼豆像素图生成器 v1.3.5 · 库存管家</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:linear-gradient(135deg,#fff5f5 0%,#ffe8e8 100%);color:#2a2a2a;min-height:100vh;padding:16px}
@@ -339,16 +339,6 @@ header p{font-size:.72em}
       <div class="section">
         <div class="panel-title">📺 显示</div>
         <div class="control-group">
-          <label>限制颜色数（K-means聚类）</label>
-          <select id="colorCount">
-            <option value="10">10 色（极致简）</option>
-            <option value="15">15 色</option>
-            <option value="20">20 色</option>
-            <option value="30">30 色</option>
-            <option value="42" selected>42 色（全色·不丢失细节）</option>
-          </select>
-        </div>
-        <div class="control-group">
           <label>网格视图</label>
           <div class="tabs" id="modeTabs">
             <div class="tab active" data-mode="color">纯色</div>
@@ -365,12 +355,6 @@ header p{font-size:.72em}
         </div>
         <div class="toolbar" style="margin-top:8px">
           <label><input type="checkbox" id="showGrid" checked> 显示网格</label>
-          <label><input type="checkbox" id="dither" checked> 抖动</label>
-          <select id="ditherStrength" style="font-size:.78em;padding:3px 6px;border:1px solid #ffc4d0;border-radius:5px;background:#fff;color:#666;cursor:pointer" title="抖动强度:弱=少噪点,强=更多过渡">
-            <option value="0.25" selected>弱</option>
-            <option value="0.55">中</option>
-            <option value="1">强</option>
-          </select>
         </div>
       </div>
 
@@ -1040,7 +1024,7 @@ const uploadZone=$('uploadZone'),fileInput=$('fileInput');
 const gridWE=$('gridW'),gridHE=$('gridH');
 const lockRatio=$('lockRatio'),boardPreset=$('boardPreset');
 const paletteSelect=$('paletteSelect');
-const bgMode=$('bgMode'),showGrid=$('showGrid'),dither=$('dither'),ditherStrength=$('ditherStrength');
+const bgMode=$('bgMode'),showGrid=$('showGrid');
 const colorCount=$('colorCount');
 const generateBtn=$('generateBtn'),exportBtn=$('exportBtn'),exportListBtn=$('exportListBtn');
 const mirrorBtn=$('mirrorBtn'),removeWhiteBtn=$('removeWhiteBtn'),textBeadBtn=$('textBeadBtn');
@@ -1088,7 +1072,7 @@ function switchView(v){
   viewChart.style.display=v==='chart'?'':'none';
 }
 
-[gridWE,gridHE,showGrid,dither,ditherStrength,colorCount,bgMode].forEach(el=>el.addEventListener('change',()=>{
+[gridWE,gridHE,showGrid,bgMode].forEach(el=>el.addEventListener('change',()=>{
   if(lockRatio.value==='image'&&currentImage)syncHeightFromImage();
   if(currentImage){shouldAutoScroll=false;generate();}
 }));
@@ -1572,86 +1556,34 @@ function generate(){
 }
 
 function generateAsync(W,H,myId){
-  // v1.3: 用 Lanczos 高保真缩放替代浏览器默认双线性
-  genProgress.textContent='Lanczos 缩放中...';
+  // v1.3.5: 极简像素化
+  // 第1步: 用 Lanczos 把图缩到目标尺寸(高保真缩放,边缘锐)
+  // 第2步: 每个像素用 RGB 欧氏距离找最近色号,直接出图
+  // 没有抖动、没有 K-means、没有误差扩散
+  genProgress.textContent='缩放中...';
   const small=lanczosResize(currentImage,W,H);
   const imgData=small.getContext('2d').getImageData(0,0,W,H);
   const data=imgData.data;
   currentGrid=Array.from({length:H},()=>new Array(W).fill(0));
   const pal=currentPalette.colors;
-  const useDither=dither.checked;
-  const ditherAmt=Math.max(0,Math.min(1,+ditherStrength.value||0.25));
-  const N=Math.min(+colorCount.value||20,pal.length);
-  let activePal=pal.map((c,i)=>({idx:i,c}));
-  if(myId!==_genId){hideGen();return;}
-  if(N<pal.length){
-    genProgress.textContent='颜色聚类中...';
-    const centers=kmeansReduce(imgData,N);
-    if(centers){
-      const mapped=[];
-      const used=new Set();
-      for(const c of centers){
-        // v1.3: 用 CIEDE2000 在 Lab 空间找最近色卡色（修复原 db 索引 bug）
-        const lab=rgbToLab(c[0],c[1],c[2]);
-        let best=0,bestD=Infinity;
-        for(let p=0;p<pal.length;p++){
-          const d=deltaE2000(lab,pal[p].lab);
-          if(d<bestD){bestD=d;best=p;}
-        }
-        if(!used.has(best)){used.add(best);mapped.push({idx:best,c:pal[best]});}
-      }
-      if(mapped.length>0)activePal=mapped;
-    }
-  }
   if(myId!==_genId){hideGen();return;}
   genProgress.textContent='匹配拼豆色中...';
 
-  // v1.3.4: 梯度感知抖动 - 预计算每个像素的"局部活跃度"
-  // 核心思路:抖动只在颜色过渡边界做,纯色区一律不抖动
-  // - 纯色区(邻居差异小):直接用最近色号 → 干净色块,无噪点
-  // - 过渡区(邻居差异大):抖动模拟中间色 → 边缘平滑
-  // 这样既保留了 v1.3.1 的颜色精度(每个像素仍按 CIEDE2000 匹配最近色),
-  // 又彻底解决了纯色区的雪花噪点问题
-  const gradientMap = new Uint8Array(W*H);
-  if(useDither && ditherAmt>0){
-    const GRAD_THRESHOLD = 35; // 任一邻居与当前像素差>35/通道 → 视为过渡区
-    for(let y=0;y<H;y++)for(let x=0;x<W;x++){
-      const i=(y*W+x)*4;
-      const r0=data[i],g0=data[i+1],b0=data[i+2];
-      let maxGrad=0;
-      // 4 邻居采样(足够检测边缘)
-      if(x>0){const ni=((y)*W+(x-1))*4;const d=Math.abs(data[ni]-r0)+Math.abs(data[ni+1]-g0)+Math.abs(data[ni+2]-b0);if(d>maxGrad)maxGrad=d;}
-      if(x<W-1){const ni=((y)*W+(x+1))*4;const d=Math.abs(data[ni]-r0)+Math.abs(data[ni+1]-g0)+Math.abs(data[ni+2]-b0);if(d>maxGrad)maxGrad=d;}
-      if(y>0){const ni=((y-1)*W+(x))*4;const d=Math.abs(data[ni]-r0)+Math.abs(data[ni+1]-g0)+Math.abs(data[ni+2]-b0);if(d>maxGrad)maxGrad=d;}
-      if(y<H-1){const ni=((y+1)*W+(x))*4;const d=Math.abs(data[ni]-r0)+Math.abs(data[ni+1]-g0)+Math.abs(data[ni+2]-b0);if(d>maxGrad)maxGrad=d;}
-      gradientMap[y*W+x] = maxGrad>GRAD_THRESHOLD ? 1 : 0;
-    }
-  }
-
+  // v1.3.5: 极简像素化 - 完全去掉抖动/K-means/误差扩散
+  // 只做一件事:缩小到目标尺寸 → 每个像素直接用 RGB 欧氏距离找最近色号
+  // (用 RGB 直方距离代替 CIEDE2000,直接快速,所见即所得)
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
     const i=(y*W+x)*4;const r=data[i],g=data[i+1],b=data[i+2],a=data[i+3];
     if(a<128){currentGrid[y][x]=-1;continue;}
-    const lab=rgbToLab(r,g,b);let best=0,bestD=Infinity;
-    // v1.3: 用 CIEDE2000 匹配（人眼感知更准确）
-    for(let p=0;p<activePal.length;p++){const d=deltaE2000(lab,activePal[p].c.lab);if(d<bestD){bestD=d;best=p;}}
-    const chosen=activePal[best].idx;
-    currentGrid[y][x]=chosen;
-    // v1.3.4: 梯度感知抖动 - 只在过渡区抖动,纯色区直接出最近色(无噪点)
-    if(useDither && ditherAmt>0 && gradientMap[y*W+x]){
-      // v1.3.1: 抖动改用 RGB 空间计算误差（之前误用 Lab 误差加到 RGB 通道，会引起大面积色差）
-      const[r0,g0,b0]=pal[chosen].rgb;
-      const erR=r-r0,erG=g-g0,erB=b-b0;
-      const dErR=erR*ditherAmt, dErG=erG*ditherAmt, dErB=erB*ditherAmt;
-      const distribute=(dx,dy,w)=>{
-        const nx=x+dx,ny=y+dy;
-        if(nx<0||nx>=W||ny<0||ny>=H)return;
-        const ni=(ny*W+nx)*4;
-        data[ni]=Math.max(0,Math.min(255,data[ni]+dErR*w));
-        data[ni+1]=Math.max(0,Math.min(255,data[ni+1]+dErG*w));
-        data[ni+2]=Math.max(0,Math.min(255,data[ni+2]+dErB*w));
-      };
-      distribute(1,0,7/16);distribute(-1,1,3/16);distribute(0,1,5/16);distribute(1,1,1/16);
+    // 直接用 RGB 欧氏距离找最近色号(平方距离,数值越小越接近)
+    let best=0,bestD=Infinity;
+    for(let p=0;p<pal.length;p++){
+      const[pr,pg,pb]=pal[p].rgb;
+      const dr=r-pr,dg=g-pg,db=b-pb;
+      const d=dr*dr+dg*dg+db*db;
+      if(d<bestD){bestD=d;best=p;}
     }
+    currentGrid[y][x]=best;
   }
   if(myId!==_genId){hideGen();return;}
   baseGrid=currentGrid.map(row=>row.slice());
