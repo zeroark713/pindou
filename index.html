@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>🎨 拼豆像素图生成器 v1.3.2 · 库存管家</title>
+<title>🎨 拼豆像素图生成器 v1.3.3 · 库存管家</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:linear-gradient(135deg,#fff5f5 0%,#ffe8e8 100%);color:#2a2a2a;min-height:100vh;padding:16px}
@@ -366,6 +366,11 @@ header p{font-size:.72em}
         <div class="toolbar" style="margin-top:8px">
           <label><input type="checkbox" id="showGrid" checked> 显示网格</label>
           <label><input type="checkbox" id="dither" checked> 抖动</label>
+          <select id="ditherStrength" style="font-size:.78em;padding:3px 6px;border:1px solid #ffc4d0;border-radius:5px;background:#fff;color:#666;cursor:pointer" title="抖动强度:弱=少噪点,强=更多过渡">
+            <option value="0.25" selected>弱</option>
+            <option value="0.55">中</option>
+            <option value="1">强</option>
+          </select>
         </div>
       </div>
 
@@ -1035,7 +1040,7 @@ const uploadZone=$('uploadZone'),fileInput=$('fileInput');
 const gridWE=$('gridW'),gridHE=$('gridH');
 const lockRatio=$('lockRatio'),boardPreset=$('boardPreset');
 const paletteSelect=$('paletteSelect');
-const bgMode=$('bgMode'),showGrid=$('showGrid'),dither=$('dither');
+const bgMode=$('bgMode'),showGrid=$('showGrid'),dither=$('dither'),ditherStrength=$('ditherStrength');
 const colorCount=$('colorCount');
 const generateBtn=$('generateBtn'),exportBtn=$('exportBtn'),exportListBtn=$('exportListBtn');
 const mirrorBtn=$('mirrorBtn'),removeWhiteBtn=$('removeWhiteBtn'),textBeadBtn=$('textBeadBtn');
@@ -1083,7 +1088,7 @@ function switchView(v){
   viewChart.style.display=v==='chart'?'':'none';
 }
 
-[gridWE,gridHE,showGrid,dither,colorCount,bgMode].forEach(el=>el.addEventListener('change',()=>{
+[gridWE,gridHE,showGrid,dither,ditherStrength,colorCount,bgMode].forEach(el=>el.addEventListener('change',()=>{
   if(lockRatio.value==='image'&&currentImage)syncHeightFromImage();
   if(currentImage){shouldAutoScroll=false;generate();}
 }));
@@ -1575,6 +1580,7 @@ function generateAsync(W,H,myId){
   currentGrid=Array.from({length:H},()=>new Array(W).fill(0));
   const pal=currentPalette.colors;
   const useDither=dither.checked;
+  const ditherAmt=Math.max(0,Math.min(1,+ditherStrength.value||0.25));
   const N=Math.min(+colorCount.value||20,pal.length);
   let activePal=pal.map((c,i)=>({idx:i,c}));
   if(myId!==_genId){hideGen();return;}
@@ -1607,21 +1613,23 @@ function generateAsync(W,H,myId){
     for(let p=0;p<activePal.length;p++){const d=deltaE2000(lab,activePal[p].c.lab);if(d<bestD){bestD=d;best=p;}}
     const chosen=activePal[best].idx;
     currentGrid[y][x]=chosen;
-    if(useDither){
+    if(useDither && ditherAmt>0){
       // v1.3.1: 抖动改用 RGB 空间计算误差（之前误用 Lab 误差加到 RGB 通道，会引起大面积色差）
       const[r0,g0,b0]=pal[chosen].rgb;
       const erR=r-r0,erG=g-g0,erB=b-b0;
-      // v1.3.2: 阈值过滤 - 误差太小不抖动，避免在纯色区产生"雪花"噪点
-      // 纯色区的微小误差（JPEG 压缩 / 抗锯齿）会被放大成散点噪点
-      // 只有真正"无法匹配"的色差（>18/通道）才需要用抖动模拟
-      if(Math.abs(erR)>18 || Math.abs(erG)>18 || Math.abs(erB)>18){
+      // v1.3.3: 综合优化 - 阈值过滤 + 强度系数
+      // - 阈值 28: 纯色区(JPEG/抗锯齿)微小误差不抖动,杜绝雪花噪点
+      // - 强度系数: 用户可调 弱(0.25)/中(0.55)/强(1.0),降低向邻居传播的误差量
+      //   部分误差被丢弃(变成轻微 banding),换来大幅度减少噪点
+      if(Math.abs(erR)>28 || Math.abs(erG)>28 || Math.abs(erB)>28){
+        const dErR=erR*ditherAmt, dErG=erG*ditherAmt, dErB=erB*ditherAmt;
         const distribute=(dx,dy,w)=>{
           const nx=x+dx,ny=y+dy;
           if(nx<0||nx>=W||ny<0||ny>=H)return;
           const ni=(ny*W+nx)*4;
-          data[ni]=Math.max(0,Math.min(255,data[ni]+erR*w));
-          data[ni+1]=Math.max(0,Math.min(255,data[ni+1]+erG*w));
-          data[ni+2]=Math.max(0,Math.min(255,data[ni+2]+erB*w));
+          data[ni]=Math.max(0,Math.min(255,data[ni]+dErR*w));
+          data[ni+1]=Math.max(0,Math.min(255,data[ni+1]+dErG*w));
+          data[ni+2]=Math.max(0,Math.min(255,data[ni+2]+dErB*w));
         };
         distribute(1,0,7/16);distribute(-1,1,3/16);distribute(0,1,5/16);distribute(1,1,1/16);
       }
