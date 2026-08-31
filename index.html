@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>🎨 拼豆像素图生成器 v1.5 · 库存管家</title>
+<title>🎨 拼豆像素图生成器 v1.6 · 库存管家</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:linear-gradient(135deg,#fff5f5 0%,#ffe8e8 100%);color:#2a2a2a;min-height:100vh;padding:16px}
@@ -333,18 +333,6 @@ header p{font-size:.72em}
             <option value="artkal">Artkal 阿卡</option>
           </select>
           <div id="paletteInfo" style="font-size:.72em;color:#888;margin-top:5px;line-height:1.4"></div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="panel-title">⚙️ 算法</div>
-        <div class="control-group">
-          <label>最多用色 <span id="maxColorsLabel" style="color:#888;font-weight:normal">40</span> 色</label>
-          <input type="range" id="maxColors" min="10" max="144" value="40" style="width:100%">
-          <div style="font-size:.7em;color:#999;margin-top:2px">越少越干净，越多越还原</div>
-        </div>
-        <div class="toolbar" style="margin-top:6px">
-          <label><input type="checkbox" id="whiteClamp" checked> 白色强制分档</label>
         </div>
       </div>
 
@@ -955,10 +943,9 @@ const colorCount=$('colorCount');
 const generateBtn=$('generateBtn'),exportBtn=$('exportBtn'),exportListBtn=$('exportListBtn');
 const mirrorBtn=$('mirrorBtn'),removeWhiteBtn=$('removeWhiteBtn'),textBeadBtn=$('textBeadBtn');
 const paintModeChk=$('paintMode'),paintPalette=$('paintPalette'),paintHint=$('paintHint');
-const maxColorsRange=$('maxColors'),maxColorsLabel=$('maxColorsLabel'),whiteClampChk=$('whiteClamp');
-maxColorsRange.addEventListener('input',()=>{maxColorsLabel.textContent=maxColorsRange.value;});
-maxColorsRange.addEventListener('change',()=>{if(currentImage){shouldAutoScroll=true;generate();}});
-whiteClampChk.addEventListener('change',()=>{if(currentImage){shouldAutoScroll=true;generate();}});
+// v1.6: 算法参数写死,不给用户调
+const MAX_COLORS=42;
+const WHITE_CLAMP=true;
 const undoBtn=$('undoBtn'),resetBtn=$('resetBtn');
 const originalWrap=$('originalWrap'),beadWrap=$('beadWrap'),chartWrap=$('chartWrap');
 const statsGrid=$('statsGrid'),modeTabs=$('modeTabs');
@@ -1591,7 +1578,7 @@ function generateAsync(W,H,myId){
   // 策略: 识别"接近白"的像素(L*≥88 且 C*≤12),只允许在白色段候选里选
   // 白色段: 色卡里 L*≥85 且 C*≤15 的颜色,按 L* 排序,最多取 4 档(避免马赛克)
   let whiteCands=null;
-  if(whiteClampChk.checked){
+  if(WHITE_CLAMP){
     const allWhites=pal.map((c,i)=>({i,L:c.lab[0],C:Math.hypot(c.lab[1],c.lab[2])}))
       .filter(c=>c.L>=85 && c.C<=15)
       .sort((a,b)=>b.L-a.L); // 按亮度从高到低
@@ -1631,7 +1618,7 @@ function generateAsync(W,H,myId){
 
   // ===== A: 限制最多用色数 =====
   // 把用量最少的色号合并到 CIEDE2000 最近的"存活色号",直到 ≤ maxColors
-  const maxC=+maxColorsRange.value;
+  const maxC=MAX_COLORS;
   const usage=new Map();
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
     const v=currentGrid[y][x];
