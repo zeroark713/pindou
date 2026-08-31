@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>🎨 拼豆像素图生成器 v1.3.6 · 库存管家</title>
+<title>🎨 拼豆像素图生成器 v1.4 · 库存管家</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:linear-gradient(135deg,#fff5f5 0%,#ffe8e8 100%);color:#2a2a2a;min-height:100vh;padding:16px}
@@ -756,27 +756,6 @@ const PALETTES = {
   ]}
 };
 
-function sharpen(imgData, amount=0.5){
-  // 简单的 3x3 锐化卷积
-  const W=imgData.width, H=imgData.height;
-  const src=new Uint8ClampedArray(imgData.data);
-  const data=imgData.data;
-  const kernel=[0,-1,0,-1,5,-1,0,-1,0]; // 锐化核
-  for(let y=1;y<H-1;y++){
-    for(let x=1;x<W-1;x++){
-      const i=(y*W+x)*4;
-      for(let c=0;c<3;c++){
-        let v=0;
-        let k=0;
-        for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
-          v+=src[((y+dy)*W+(x+dx))*4+c]*kernel[k++];
-        }
-        data[i+c]=Math.max(0,Math.min(255,src[i+c]*(1-amount)+v*amount));
-      }
-    }
-  }
-}
-
 // ===== v1.3: Lanczos 高保真重采样 =====
 // 用 3-lobe Lanczos 滤波器替代浏览器默认双线性缩放
 // 缩到拼豆尺寸时边缘更锐、细节保留更多（vs 双线性会糊）
@@ -846,71 +825,6 @@ function lanczosResize(src, dstW, dstH){
   }
   dstCtx.putImageData(dstData,0,0);
   return dstCanvas;
-}
-
-function kmeansReduce(imgData, k, maxIter=15){
-  const data=imgData.data;
-  const W=imgData.width, H=imgData.height;
-  const samples=[];
-  const step=Math.max(1, Math.floor((W*H)/2000));
-  for(let i=0;i<data.length;i+=4*step){
-    const a=data[i+3];
-    if(a<128)continue;
-    samples.push([data[i],data[i+1],data[i+2]]);
-  }
-  if(samples.length<=k)return null;
-
-  // ===== v1.3: K-means++ 智能初始化 =====
-  // 比随机初始化稳定得多：第一次随机，之后每次按"距离现有中心的 D²"概率选新中心
-  const centers=[];
-  centers.push(samples[Math.floor(Math.random()*samples.length)].slice());
-  while(centers.length<k){
-    const dists=new Array(samples.length);
-    let total=0;
-    for(let i=0;i<samples.length;i++){
-      let minD=Infinity;
-      for(let j=0;j<centers.length;j++){
-        const dr=samples[i][0]-centers[j][0];
-        const dg=samples[i][1]-centers[j][1];
-        const db=samples[i][2]-centers[j][2];
-        const d=dr*dr+dg*dg+db*db;
-        if(d<minD)minD=d;
-      }
-      dists[i]=minD; total+=minD;
-    }
-    if(total===0){
-      // 所有样本都已被现有中心覆盖（极端情况），随机选一个
-      centers.push(samples[Math.floor(Math.random()*samples.length)].slice());
-      continue;
-    }
-    let r=Math.random()*total;
-    let idx=samples.length-1;
-    for(let i=0;i<samples.length;i++){
-      r-=dists[i];
-      if(r<=0){idx=i;break;}
-    }
-    centers.push(samples[idx].slice());
-  }
-
-  // 标准 k-means 迭代
-  for(let it=0;it<maxIter;it++){
-    const sums=Array.from({length:k},()=>[0,0,0,0]);
-    for(const s of samples){
-      let best=0,bestD=Infinity;
-      for(let i=0;i<k;i++){
-        const dr=s[0]-centers[i][0], dg=s[1]-centers[i][1], db=s[2]-centers[i][2];
-        const d=dr*dr+dg*dg+db*db;
-        if(d<bestD){bestD=d;best=i;}
-      }
-      sums[best][0]+=s[0];sums[best][1]+=s[1];sums[best][2]+=s[2];sums[best][3]++;
-    }
-    for(let i=0;i<k;i++){
-      if(sums[i][3]>0){
-        centers[i]=[sums[i][0]/sums[i][3],sums[i][1]/sums[i][3],sums[i][2]/sums[i][3]];
-      }
-    }
-  }
-  return centers;
 }
 
 function rgbToLab(r,g,b){
@@ -1555,48 +1469,122 @@ function generate(){
   },20);
 }
 
-function generateAsync(W,H,myId){
-  // v1.3.6: 极简像素化 + 抗噪预处理
-  // 第1步: Lanczos 把图缩到目标尺寸
-  // 第2步: 3×3 模糊抹掉 JPEG 压缩噪点和 Lanczos 边缘振铃
-  //        (不模糊的话,一点微小色偏就会被错误匹配到邻近的纯色号)
-  // 第3步: 每个像素用 RGB 欧氏距离找最近色号
-  genProgress.textContent='缩放中...';
-  const small=lanczosResize(currentImage,W,H);
-  const imgData=small.getContext('2d').getImageData(0,0,W,H);
-  const rawData=imgData.data;
-  // 3×3 盒式模糊(每个像素与 8 邻居取平均)
-  const data=new Uint8ClampedArray(rawData.length);
-  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
-    let r=0,g=0,bb=0,a=0,n=0;
-    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
-      const ny=y+dy,nx=x+dx;
-      if(ny<0||ny>=H||nx<0||nx>=W)continue;
-      const ni=(ny*W+nx)*4;
-      r+=rawData[ni];g+=rawData[ni+1];bb+=rawData[ni+2];a+=rawData[ni+3];n++;
-    }
-    const di=(y*W+x)*4;
-    data[di]=r/n;data[di+1]=g/n;data[di+2]=bb/n;data[di+3]=a/n;
+// ===== v1.4: 双边滤波（源图域保边降噪） =====
+// 空间近 + 颜色像 才参与平均：纯色区强力降噪，边缘两侧不互相渗透
+// 在原图分辨率上做（信息量最足），比缩小后再滤波可靠得多
+// 大图为控制耗时，先缩到 maxDim 以内再滤波
+function bilateralFilter(canvas, maxDim=800, sigmaS=2.0, sigmaR=25){
+  let w=canvas.width, h=canvas.height;
+  let work=canvas;
+  if(Math.max(w,h)>maxDim){
+    const k=maxDim/Math.max(w,h);
+    w=Math.round(w*k); h=Math.round(h*k);
+    work=document.createElement('canvas');
+    work.width=w; work.height=h;
+    work.getContext('2d').drawImage(canvas,0,0,w,h);
   }
+  const ctx=work.getContext('2d');
+  const src=ctx.getImageData(0,0,w,h);
+  const sd=src.data;
+  const out=new Uint8ClampedArray(sd.length);
+  const R=Math.ceil(sigmaS*2);            // 空间窗口半径
+  const twoSigS2=2*sigmaS*sigmaS;
+  const twoSigR2=2*sigmaR*sigmaR;
+  const gaussS=[];                        // 空间高斯查表
+  for(let d=0;d<=R*2*Math.SQRT2;d++)gaussS[d]=Math.exp(-(d*d)/twoSigS2);
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const ci=(y*w+x)*4;
+      const cr=sd[ci],cg=sd[ci+1],cb=sd[ci+2],ca=sd[ci+3];
+      let r=0,g=0,b=0,a=0,ws=0;
+      for(let dy=-R;dy<=R;dy++){
+        const ny=y+dy; if(ny<0||ny>=h)continue;
+        for(let dx=-R;dx<=R;dx++){
+          const nx=x+dx; if(nx<0||nx>=w)continue;
+          const ni=(ny*w+nx)*4;
+          const dr=sd[ni]-cr,dg=sd[ni+1]-cg,db=sd[ni+2]-cb;
+          const colorD2=dr*dr+dg*dg+db*db;
+          const wgt=gaussS[Math.round(Math.sqrt(dx*dx+dy*dy))]*Math.exp(-colorD2/twoSigR2);
+          r+=sd[ni]*wgt; g+=sd[ni+1]*wgt; b+=sd[ni+2]*wgt; a+=sd[ni+3]*wgt; ws+=wgt;
+        }
+      }
+      out[ci]=r/ws; out[ci+1]=g/ws; out[ci+2]=b/ws; out[ci+3]=a/ws;
+    }
+  }
+  const outImg=ctx.createImageData(w,h);
+  outImg.data.set(out);
+  ctx.putImageData(outImg,0,0);
+  return work;
+}
+
+// ===== v1.4: 保守众数平滑（只杀孤岛噪点，不碰边缘） =====
+// 某豆的 8 邻居里 ≥threshold 个都是同一另一色号 B，才把它改成 B
+// 阈值 6 很保守：1px 细线和真实细节邻居票数分散，不会被误伤
+function modeSmooth(grid, threshold=6){
+  const H=grid.length, W=grid[0].length;
+  const out=grid.map(row=>row.slice());
+  for(let y=0;y<H;y++){
+    for(let x=0;x<W;x++){
+      const cur=grid[y][x];
+      if(cur===-1)continue;
+      const cnt={};
+      for(let dy=-1;dy<=1;dy++){
+        const ny=y+dy; if(ny<0||ny>=H)continue;
+        for(let dx=-1;dx<=1;dx++){
+          if(dx===0&&dy===0)continue;
+          const nx=x+dx; if(nx<0||nx>=W)continue;
+          const v=grid[ny][nx];
+          if(v===-1||v===cur)continue;
+          cnt[v]=(cnt[v]||0)+1;
+        }
+      }
+      for(const k in cnt){
+        if(cnt[k]>=threshold){out[y][x]=+k;break;}
+      }
+    }
+  }
+  return out;
+}
+
+function generateAsync(W,H,myId){
+  // v1.4: 感知导向四段管线
+  // ① 双边滤波(源图域,保边降噪) → ② Lanczos 缩放
+  // ③ Lab + CIEDE2000 匹配     → ④ 保守众数平滑
+  genProgress.textContent='降噪中...';
+  // 把 currentImage 先落到 canvas（lanczosResize 接受 canvas 或 img）
+  let srcCanvas=currentImage;
+  if(currentImage.tagName!=='CANVAS'){
+    srcCanvas=document.createElement('canvas');
+    srcCanvas.width=currentImage.naturalWidth||currentImage.width;
+    srcCanvas.height=currentImage.naturalHeight||currentImage.height;
+    srcCanvas.getContext('2d').drawImage(currentImage,0,0);
+  }
+  const filtered=bilateralFilter(srcCanvas);
+  if(myId!==_genId){hideGen();return;}
+  genProgress.textContent='缩放中...';
+  const small=lanczosResize(filtered,W,H);
+  const imgData=small.getContext('2d').getImageData(0,0,W,H);
+  const data=imgData.data;
   currentGrid=Array.from({length:H},()=>new Array(W).fill(0));
   const pal=currentPalette.colors;
   if(myId!==_genId){hideGen();return;}
   genProgress.textContent='匹配拼豆色中...';
 
-  // 极简像素化 - 每个像素用 RGB 欧氏距离找最近色号
+  // CIEDE2000 感知匹配（palette 的 Lab 已在启动时预计算）
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
     const i=(y*W+x)*4;const r=data[i],g=data[i+1],b=data[i+2],a=data[i+3];
     if(a<128){currentGrid[y][x]=-1;continue;}
-    // 直接用 RGB 欧氏距离找最近色号(平方距离,数值越小越接近)
+    const lab=rgbToLab(r,g,b);
     let best=0,bestD=Infinity;
     for(let p=0;p<pal.length;p++){
-      const[pr,pg,pb]=pal[p].rgb;
-      const dr=r-pr,dg=g-pg,db=b-pb;
-      const d=dr*dr+dg*dg+db*db;
+      const d=deltaE2000(lab,pal[p].lab);
       if(d<bestD){bestD=d;best=p;}
     }
     currentGrid[y][x]=best;
   }
+  if(myId!==_genId){hideGen();return;}
+  genProgress.textContent='清理噪点中...';
+  currentGrid=modeSmooth(currentGrid,6);
   if(myId!==_genId){hideGen();return;}
   baseGrid=currentGrid.map(row=>row.slice());
   undoStack=[];
