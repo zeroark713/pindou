@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>🎨 拼豆像素图生成器 v1.3.3 · 库存管家</title>
+<title>🎨 拼豆像素图生成器 v1.3.4 · 库存管家</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:linear-gradient(135deg,#fff5f5 0%,#ffe8e8 100%);color:#2a2a2a;min-height:100vh;padding:16px}
@@ -1605,6 +1605,29 @@ function generateAsync(W,H,myId){
   }
   if(myId!==_genId){hideGen();return;}
   genProgress.textContent='匹配拼豆色中...';
+
+  // v1.3.4: 梯度感知抖动 - 预计算每个像素的"局部活跃度"
+  // 核心思路:抖动只在颜色过渡边界做,纯色区一律不抖动
+  // - 纯色区(邻居差异小):直接用最近色号 → 干净色块,无噪点
+  // - 过渡区(邻居差异大):抖动模拟中间色 → 边缘平滑
+  // 这样既保留了 v1.3.1 的颜色精度(每个像素仍按 CIEDE2000 匹配最近色),
+  // 又彻底解决了纯色区的雪花噪点问题
+  const gradientMap = new Uint8Array(W*H);
+  if(useDither && ditherAmt>0){
+    const GRAD_THRESHOLD = 35; // 任一邻居与当前像素差>35/通道 → 视为过渡区
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+      const i=(y*W+x)*4;
+      const r0=data[i],g0=data[i+1],b0=data[i+2];
+      let maxGrad=0;
+      // 4 邻居采样(足够检测边缘)
+      if(x>0){const ni=((y)*W+(x-1))*4;const d=Math.abs(data[ni]-r0)+Math.abs(data[ni+1]-g0)+Math.abs(data[ni+2]-b0);if(d>maxGrad)maxGrad=d;}
+      if(x<W-1){const ni=((y)*W+(x+1))*4;const d=Math.abs(data[ni]-r0)+Math.abs(data[ni+1]-g0)+Math.abs(data[ni+2]-b0);if(d>maxGrad)maxGrad=d;}
+      if(y>0){const ni=((y-1)*W+(x))*4;const d=Math.abs(data[ni]-r0)+Math.abs(data[ni+1]-g0)+Math.abs(data[ni+2]-b0);if(d>maxGrad)maxGrad=d;}
+      if(y<H-1){const ni=((y+1)*W+(x))*4;const d=Math.abs(data[ni]-r0)+Math.abs(data[ni+1]-g0)+Math.abs(data[ni+2]-b0);if(d>maxGrad)maxGrad=d;}
+      gradientMap[y*W+x] = maxGrad>GRAD_THRESHOLD ? 1 : 0;
+    }
+  }
+
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
     const i=(y*W+x)*4;const r=data[i],g=data[i+1],b=data[i+2],a=data[i+3];
     if(a<128){currentGrid[y][x]=-1;continue;}
@@ -1613,26 +1636,21 @@ function generateAsync(W,H,myId){
     for(let p=0;p<activePal.length;p++){const d=deltaE2000(lab,activePal[p].c.lab);if(d<bestD){bestD=d;best=p;}}
     const chosen=activePal[best].idx;
     currentGrid[y][x]=chosen;
-    if(useDither && ditherAmt>0){
+    // v1.3.4: 梯度感知抖动 - 只在过渡区抖动,纯色区直接出最近色(无噪点)
+    if(useDither && ditherAmt>0 && gradientMap[y*W+x]){
       // v1.3.1: 抖动改用 RGB 空间计算误差（之前误用 Lab 误差加到 RGB 通道，会引起大面积色差）
       const[r0,g0,b0]=pal[chosen].rgb;
       const erR=r-r0,erG=g-g0,erB=b-b0;
-      // v1.3.3: 综合优化 - 阈值过滤 + 强度系数
-      // - 阈值 28: 纯色区(JPEG/抗锯齿)微小误差不抖动,杜绝雪花噪点
-      // - 强度系数: 用户可调 弱(0.25)/中(0.55)/强(1.0),降低向邻居传播的误差量
-      //   部分误差被丢弃(变成轻微 banding),换来大幅度减少噪点
-      if(Math.abs(erR)>28 || Math.abs(erG)>28 || Math.abs(erB)>28){
-        const dErR=erR*ditherAmt, dErG=erG*ditherAmt, dErB=erB*ditherAmt;
-        const distribute=(dx,dy,w)=>{
-          const nx=x+dx,ny=y+dy;
-          if(nx<0||nx>=W||ny<0||ny>=H)return;
-          const ni=(ny*W+nx)*4;
-          data[ni]=Math.max(0,Math.min(255,data[ni]+dErR*w));
-          data[ni+1]=Math.max(0,Math.min(255,data[ni+1]+dErG*w));
-          data[ni+2]=Math.max(0,Math.min(255,data[ni+2]+dErB*w));
-        };
-        distribute(1,0,7/16);distribute(-1,1,3/16);distribute(0,1,5/16);distribute(1,1,1/16);
-      }
+      const dErR=erR*ditherAmt, dErG=erG*ditherAmt, dErB=erB*ditherAmt;
+      const distribute=(dx,dy,w)=>{
+        const nx=x+dx,ny=y+dy;
+        if(nx<0||nx>=W||ny<0||ny>=H)return;
+        const ni=(ny*W+nx)*4;
+        data[ni]=Math.max(0,Math.min(255,data[ni]+dErR*w));
+        data[ni+1]=Math.max(0,Math.min(255,data[ni+1]+dErG*w));
+        data[ni+2]=Math.max(0,Math.min(255,data[ni+2]+dErB*w));
+      };
+      distribute(1,0,7/16);distribute(-1,1,3/16);distribute(0,1,5/16);distribute(1,1,1/16);
     }
   }
   if(myId!==_genId){hideGen();return;}
